@@ -1,0 +1,41 @@
+name: ApexNotch
+options:
+  bundleIdPrefix: com.connho
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+targets:
+  ApexNotch:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: ApexNotch
+    info:
+      path: ApexNotch/Resources/Info.plist
+      properties:
+        CFBundleName: ApexNotch
+        CFBundleDisplayName: ApexNotch
+        CFBundleIdentifier: com.connho.ApexNotch
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.0"
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSHumanReadableCopyright: "Copyright © 2025 Conn Ho"
+        NSPrincipalClass: NSApplication
+        CFBundleIconFile: AppIcon
+    entitlements:
+      path: ApexNotch/Resources/ApexNotch.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.connho.ApexNotch
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        PRODUCT_NAME: ApexNotch
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_STRICT_CONCURRENCY: complete
