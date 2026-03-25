@@ -6,12 +6,11 @@ actor ClaudeUsageParser {
 
     private let claudeDirectory: URL
 
-    /// Approximate cost per 1M tokens (blended input+output, claude-3.5-sonnet estimate)
-    private static let costPer1MTokens: Double = 4.50
 
     init() {
+        // Parse from projects directory where Claude Code stores conversations
         claudeDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent(".claude/projects", isDirectory: true)
     }
 
     // MARK: - Public API
@@ -47,15 +46,11 @@ actor ClaudeUsageParser {
             .sorted { $0.timestamp > $1.timestamp }
             .first?.model ?? "claude-3-5-sonnet"
 
-        // Rough cost estimate
-        let cost = Double(total) / 1_000_000.0 * Self.costPer1MTokens
-
         return UsageSnapshot(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             windowStart: windowStart,
             windowEnd: windowEnd,
-            estimatedCost: cost,
             model: model
         )
     }
@@ -149,7 +144,9 @@ actor ClaudeUsageParser {
 
         func extractUsage(_ dict: [String: Any]) {
             if let u = dict["usage"] as? [String: Any] {
-                inputTokens  += u["input_tokens"]  as? Int ?? 0
+                inputTokens  += (u["input_tokens"]  as? Int ?? 0)
+                             +  (u["cache_read_input_tokens"]     as? Int ?? 0)
+                             +  (u["cache_creation_input_tokens"] as? Int ?? 0)
                 outputTokens += u["output_tokens"] as? Int ?? 0
             }
         }

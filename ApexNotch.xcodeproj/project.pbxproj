@@ -12,6 +12,13 @@
 		24FFAB86BEAB890AF5B39883 /* ShellRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0288300A5BB3939522841BC4 /* ShellRunner.swift */; };
 		25941335FE51DC5E56BEE897 /* AIUsageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A58E3687F12E85E71F9F4C /* AIUsageService.swift */; };
 		2A1C12AF1BDFE92E73D2CF4D /* AIAgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF0B4392748046AD078AAAB /* AIAgentModels.swift */; };
+		AA0002NOTCHEFFECTS002 /* NotchEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001NOTCHEFFECTS001 /* NotchEffects.swift */; };
+		BB0002REPOMODELS0002 /* RepoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001REPOMODELS0001 /* RepoModels.swift */; };
+		BB0004GITREPOSVC004 /* GitRepoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0003GITREPOSVC003 /* GitRepoService.swift */; };
+		CC0002GHMODELS0002 /* GitHubModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0001GHMODELS0001 /* GitHubModels.swift */; };
+		CC0009GHSECRET09 /* GitHubSecrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0008GHSECRET08 /* GitHubSecrets.swift */; };
+		CC0007GHOAUTH007 /* GitHubOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0006GHOAUTH006 /* GitHubOAuth.swift */; };
+		CC0004GHSERVICE004 /* GitHubService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0003GHSERVICE003 /* GitHubService.swift */; };
 		2C078FADBE6D45EBCC9F0CB8 /* NotchOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A9323C1A8D32F58C021268 /* NotchOverlayView.swift */; };
 		3C7021EF0C8CF938FA4DCE31 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB29FC53B24D2A20DA421E48 /* AppDelegate.swift */; };
 		3E7DB4E5CC98C91E9847A33A /* UsageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFAF7A7A00078BAB86CAA52 /* UsageModels.swift */; };
@@ -35,6 +42,13 @@
 /* Begin PBXFileReference section */
 		023627DFAB202715F8D0CFCB /* AppSignal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignal.swift; sourceTree = "<group>"; };
 		0288300A5BB3939522841BC4 /* ShellRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellRunner.swift; sourceTree = "<group>"; };
+		AA0001NOTCHEFFECTS001 /* NotchEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchEffects.swift; sourceTree = "<group>"; };
+		BB0001REPOMODELS0001 /* RepoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RepoModels.swift; path = ApexNotch/Features/GitRepo/RepoModels.swift; sourceTree = SOURCE_ROOT; };
+		BB0003GITREPOSVC003 /* GitRepoService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GitRepoService.swift; path = ApexNotch/Features/GitRepo/GitRepoService.swift; sourceTree = SOURCE_ROOT; };
+		CC0001GHMODELS0001 /* GitHubModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GitHubModels.swift; path = ApexNotch/Features/GitHub/GitHubModels.swift; sourceTree = SOURCE_ROOT; };
+		CC0008GHSECRET08 /* GitHubSecrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GitHubSecrets.swift; path = ApexNotch/Features/GitHub/GitHubSecrets.swift; sourceTree = SOURCE_ROOT; };
+		CC0006GHOAUTH006 /* GitHubOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GitHubOAuth.swift; path = ApexNotch/Features/GitHub/GitHubOAuth.swift; sourceTree = SOURCE_ROOT; };
+		CC0003GHSERVICE003 /* GitHubService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GitHubService.swift; path = ApexNotch/Features/GitHub/GitHubService.swift; sourceTree = SOURCE_ROOT; };
 		1C735B374DB40D7DC4830696 /* NotchShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchShape.swift; sourceTree = "<group>"; };
 		2794A721ABCFF805C63B7893 /* ProcessModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessModels.swift; sourceTree = "<group>"; };
 		326D0E0F601F6C327EC1C88D /* ProcessMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessMonitorService.swift; sourceTree = "<group>"; };
@@ -133,6 +147,7 @@
 			isa = PBXGroup;
 			children = (
 				A7A9323C1A8D32F58C021268 /* NotchOverlayView.swift */,
+				AA0001NOTCHEFFECTS001 /* NotchEffects.swift */,
 				1C735B374DB40D7DC4830696 /* NotchShape.swift */,
 				DFA2FA55491454448232C6CD /* NotchWindowController.swift */,
 			);
@@ -166,10 +181,24 @@
 			isa = PBXGroup;
 			children = (
 				2794A721ABCFF805C63B7893 /* ProcessModels.swift */,
+				BB0003GITREPOSVC003 /* GitRepoService.swift */,
+				BB0001REPOMODELS0001 /* RepoModels.swift */,
 				326D0E0F601F6C327EC1C88D /* ProcessMonitorService.swift */,
 				A2815BCAD4119D8A88A50A51 /* ProcessMonitorView.swift */,
 			);
 			path = ProcessMonitor;
+			sourceTree = "<group>";
+		};
+
+		CC0005GHGROUP005 /* GitHub */ = {
+			isa = PBXGroup;
+			children = (
+				CC0001GHMODELS0001 /* GitHubModels.swift */,
+				CC0003GHSERVICE003 /* GitHubService.swift */,
+				CC0006GHOAUTH006 /* GitHubOAuth.swift */,
+				CC0008GHSECRET08 /* GitHubSecrets.swift */,
+			);
+			path = GitHub;
 			sourceTree = "<group>";
 		};
 		F5DAAA4D7A4DCA5FBEA5376C /* Features */ = {
@@ -177,6 +206,7 @@
 			children = (
 				20F27E4F3F7202BBEF367883 /* AIAgent */,
 				5CE8DE46BDF7576E9F81DC88 /* AIUsage */,
+				CC0005GHGROUP005 /* GitHub */,
 				E11CBB1C285148BD32A6AB65 /* ProcessMonitor */,
 			);
 			path = Features;
@@ -262,6 +292,13 @@
 				DCE3423A71E6D886E7EB1DE2 /* ClaudeUsageParser.swift in Sources */,
 				7055E1B9CC3AA548C5BDFC61 /* Extensions.swift in Sources */,
 				B375014C6BB292850B18F975 /* MenuBarController.swift in Sources */,
+				AA0002NOTCHEFFECTS002 /* NotchEffects.swift in Sources */,
+				BB0002REPOMODELS0002 /* RepoModels.swift in Sources */,
+				BB0004GITREPOSVC004 /* GitRepoService.swift in Sources */,
+				CC0002GHMODELS0002 /* GitHubModels.swift in Sources */,
+				CC0004GHSERVICE004 /* GitHubService.swift in Sources */,
+				CC0007GHOAUTH007 /* GitHubOAuth.swift in Sources */,
+				CC0009GHSECRET09 /* GitHubSecrets.swift in Sources */,
 				2C078FADBE6D45EBCC9F0CB8 /* NotchOverlayView.swift in Sources */,
 				D41CFBAB897FB4F6BADEB361 /* NotchShape.swift in Sources */,
 				A3F64BC9D49FFF40AA27E31C /* NotchWindowController.swift in Sources */,

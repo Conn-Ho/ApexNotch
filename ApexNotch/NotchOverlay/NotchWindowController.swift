@@ -2,26 +2,19 @@ import AppKit
 import SwiftUI
 
 // MARK: - NotchWindowController
-// Creates a full-screen-width, 38pt-tall (expandable) window pinned to the top of the
-// main display. The window lives above the menu bar and is transparent in the center
-// (camera notch area), showing only the left/right wings.
+// Small NSPanel centered on the physical notch (not full-screen-width).
+// Uses level = .mainMenu + 3 and isFloatingPanel = true so .onHover works
+// even when other apps are in focus — same approach as AgentNotch.
 
 @MainActor
 final class NotchWindowController {
 
-    private var window: NSWindow?
+    private var panel: NSPanel?
     private let appState: AppState
+    private var spaceObserver: NSObjectProtocol?
 
-    /// Current window height — updated when the SwiftUI view expands.
-    private var currentHeight: CGFloat = 38
-    private let barHeight:     CGFloat = 38
-    private let expandedHeight: CGFloat = 240   // bar + panel
-
-    /// Global mouse-moved monitor (non-local, for tracking while other apps are active).
-    private var mouseMonitor: Any?
-
-    /// Delay before collapsing after mouse leaves the notch zone.
-    private var collapseWorkItem: DispatchWorkItem?
+    // Window includes shadow padding so the glow has room to render
+    private let shadowPadding: CGFloat = 20
 
     init(appState: AppState) {
         self.appState = appState
@@ -33,142 +26,71 @@ final class NotchWindowController {
         guard let screen = NSScreen.main else { return }
         guard screen.safeAreaInsets.top > 0 else { return }  // notch screen only
 
-        let frame = makeWindowFrame(screen: screen, height: barHeight)
+        let frame = windowFrame(for: screen)
 
-        let win = NSWindow(
+        let p = NSPanel(
             contentRect: frame,
-            styleMask:   .borderless,
-            backing:     .buffered,
-            defer:       false,
-            screen:      screen
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
         )
-        win.level           = .statusBar   // above menu bar
-        win.backgroundColor = .clear
-        win.isOpaque        = false
-        win.hasShadow       = false
-        win.ignoresMouseEvents = false     // we need clicks / hover for expansion
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        win.isReleasedWhenClosed = false
+        p.isFloatingPanel          = true
+        p.isOpaque                 = false
+        p.titleVisibility          = .hidden
+        p.titlebarAppearsTransparent = true
+        p.backgroundColor          = .clear
+        p.isMovable                = false
+        p.level                    = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
+        p.hasShadow                = false
+        p.isReleasedWhenClosed     = false
+        p.appearance               = NSAppearance(named: .darkAqua)   // always dark
+        p.collectionBehavior       = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
 
         let rootView = NotchOverlayView(appState: appState)
-        win.contentView = NSHostingView(rootView: rootView)
+        p.contentView = NSHostingView(rootView: rootView)
+        p.orderFrontRegardless()
+        self.panel = p
 
-        win.orderFrontRegardless()
-        self.window = win
-
-        startHoverTracking()
-    }
-
-    func updateHeight(_ height: CGFloat) {
-        guard let window, let screen = NSScreen.main else { return }
-        currentHeight = height
-        let newFrame = makeWindowFrame(screen: screen, height: height)
-        window.setFrame(newFrame, display: true, animate: false)
-    }
-
-    // MARK: - Window Frame
-
-    private func makeWindowFrame(screen: NSScreen, height: CGFloat) -> NSRect {
-        let screenFrame = screen.frame
-        return NSRect(
-            x: screenFrame.minX,
-            y: screenFrame.maxY - height,
-            width: screenFrame.width,
-            height: height
-        )
-    }
-
-    // MARK: - Hover Tracking
-    // Use a global mouse-moved event monitor so we detect mouse position
-    // regardless of which application has focus.
-
-    private func startHoverTracking() {
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
-            Task { @MainActor [weak self] in
-                self?.handleMouseMoved(event: event)
-            }
+        // Re-order front after every Space switch so the panel never disappears.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.panel?.orderFrontRegardless()
         }
     }
 
-    private func stopHoverTracking() {
-        if let monitor = mouseMonitor {
-            NSEvent.removeMonitor(monitor)
-            mouseMonitor = nil
+    // MARK: - Sizing helpers (called by NotchOverlayView via AppState)
+
+    /// Full-screen-width window, short enough just for the expanded notch panel.
+    /// Using full screen width (AgentNotch / DynamicNotchKit approach) avoids all
+    /// centering math — the SwiftUI view centers the panel naturally on screen.
+    private func windowFrame(for screen: NSScreen) -> NSRect {
+        let openHeight: CGFloat = 480
+        let totalH = openHeight + shadowPadding
+        return NSRect(x: screen.frame.minX,
+                      y: screen.frame.maxY - totalH,
+                      width: screen.frame.width,
+                      height: totalH)
+    }
+}
+
+// MARK: - Shared notch sizing (used by both controller and view)
+
+@MainActor
+func closedNotchSize(screen: NSScreen? = nil) -> CGSize {
+    let s = screen ?? NSScreen.main
+    var w: CGFloat = 185
+    var h: CGFloat = 32
+    if let s {
+        if let l = s.auxiliaryTopLeftArea?.width,
+           let r = s.auxiliaryTopRightArea?.width {
+            w = s.frame.width - l - r + 4   // +4 slight overlap to hide gap
+        }
+        if s.safeAreaInsets.top > 0 {
+            h = s.safeAreaInsets.top
         }
     }
-
-    private func handleMouseMoved(event: NSEvent) {
-        guard let screen = NSScreen.main, let window else { return }
-        // Convert global mouse location to screen coordinates
-        let mouse = NSEvent.mouseLocation
-        let notchZone = notchHoverRect(screen: screen)
-
-        if notchZone.contains(mouse) {
-            // Cancel any pending collapse
-            collapseWorkItem?.cancel()
-            collapseWorkItem = nil
-
-            if currentHeight < expandedHeight {
-                expandWindow()
-            }
-        } else if window.frame.contains(mouse) {
-            // Mouse is inside the window frame but outside the notch zone
-            // (could be over a wing) — keep expanded
-            collapseWorkItem?.cancel()
-            collapseWorkItem = nil
-        } else {
-            // Mouse left the notch / wing area — schedule collapse
-            scheduleCollapse()
-        }
-    }
-
-    private func notchHoverRect(screen: NSScreen) -> NSRect {
-        // The camera notch is roughly centered, ~250pt wide × top 38pt of screen
-        let cx = screen.frame.midX
-        let notchWidth: CGFloat = 300
-        let hitHeight: CGFloat  = currentHeight + 20  // small margin
-        return NSRect(
-            x: cx - notchWidth / 2,
-            y: screen.frame.maxY - hitHeight,
-            width: notchWidth,
-            height: hitHeight
-        )
-    }
-
-    // MARK: - Expand / Collapse
-
-    private func expandWindow() {
-        guard let screen = NSScreen.main else { return }
-        currentHeight = expandedHeight
-        let newFrame = makeWindowFrame(screen: screen, height: expandedHeight)
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.30
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            window?.animator().setFrame(newFrame, display: true)
-        }
-    }
-
-    private func scheduleCollapse() {
-        guard collapseWorkItem == nil else { return }
-        let item = DispatchWorkItem { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.collapseWindow()
-                self?.collapseWorkItem = nil
-            }
-        }
-        collapseWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
-    }
-
-    private func collapseWindow() {
-        guard let screen = NSScreen.main else { return }
-        currentHeight = barHeight
-        let newFrame = makeWindowFrame(screen: screen, height: barHeight)
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.22
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            window?.animator().setFrame(newFrame, display: true)
-        }
-    }
-
+    return CGSize(width: w, height: h + 2)   // +2 overlap
 }

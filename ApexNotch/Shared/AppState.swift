@@ -8,10 +8,18 @@ final class AppState {
     var isRefreshing: Bool = false
     var agentSession: AgentSession? = nil
     var usageSnapshot: UsageSnapshot? = nil
+    var repoStatus: RepoStatus? = nil
+    var isNotchExpanded: Bool = false
+    var githubRepoInfo: GitHubRepoInfo? = nil
+    var isGitHubAuthenticated: Bool = false
+
+    let effectSettings = EffectSettings()
 
     private let processMonitor = ProcessMonitorService()
     private let agentService = AIAgentService()
     private let usageService = AIUsageService()
+    private let gitRepoService = GitRepoService()
+    private let gitHubService = GitHubService()
 
     private var refreshTask: Task<Void, Never>?
     private var agentTask: Task<Void, Never>?
@@ -70,6 +78,53 @@ final class AppState {
                 }
             }
         }
+
+        // Start git repo service
+        await gitRepoService.setCallback { [weak self] (status: RepoStatus?) async in
+            await MainActor.run { self?.repoStatus = status }
+        }
+        await gitRepoService.start()
+
+        // Start GitHub service
+        isGitHubAuthenticated = await gitHubService.isAuthenticated
+        await gitHubService.setCallback { [weak self] info in
+            Task { @MainActor [weak self] in
+                self?.githubRepoInfo = info
+            }
+        }
+        if isGitHubAuthenticated {
+            let repoStatusProvider: @Sendable () -> RepoStatus? = { [weak self] in
+                // Access from MainActor - we capture a snapshot
+                // This closure is called from GitHubService actor, so we need a nonisolated way
+                // We'll return nil here; the actual refresh uses refreshGitHub()
+                nil
+            }
+            await gitHubService.start(repoStatusProvider: repoStatusProvider)
+            // Trigger an immediate refresh with real repoStatus
+            await refreshGitHub()
+        }
+    }
+
+    func refreshGitHub() async {
+        let currentStatus = repoStatus
+        await gitHubService.refresh(repoStatusProvider: { currentStatus })
+        isGitHubAuthenticated = await gitHubService.isAuthenticated
+    }
+
+    func connectGitHub(token: String) async {
+        await gitHubService.saveToken(token)
+        isGitHubAuthenticated = true
+        await refreshGitHub()
+        // Also start polling
+        let currentStatus = repoStatus
+        await gitHubService.start(repoStatusProvider: { currentStatus })
+    }
+
+    func disconnectGitHub() async {
+        await gitHubService.deleteToken()
+        await gitHubService.stop()
+        isGitHubAuthenticated = false
+        githubRepoInfo = nil
     }
 
     func stopAll() {
@@ -82,6 +137,8 @@ final class AppState {
         Task {
             await agentService.stop()
             await usageService.stop()
+            await gitRepoService.stop()
+            await gitHubService.stop()
         }
     }
 

@@ -16,6 +16,5 @@ struct UsageSnapshot: Sendable {
         return max(0, min(1, elapsed / total))
     }
 
-    let estimatedCost: Double   // USD
     let model: String
 }

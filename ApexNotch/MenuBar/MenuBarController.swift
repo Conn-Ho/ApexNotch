@@ -16,8 +16,10 @@ final class MenuBarController {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.title = "⚡"
-            button.font = NSFont.systemFont(ofSize: 14)
+            let img = NSImage(systemSymbolName: "rectangle.topthird.inset.filled",
+                              accessibilityDescription: "ApexNotch")
+            img?.isTemplate = true
+            button.image = img
             button.action = #selector(togglePopover)
             button.target = self
             button.sendAction(on: [.leftMouseUp])

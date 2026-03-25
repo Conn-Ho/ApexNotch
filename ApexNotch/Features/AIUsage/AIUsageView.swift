@@ -109,16 +109,6 @@ struct AIUsageView: View {
                 .clipShape(Capsule())
 
             Spacer()
-
-            // Cost estimate
-            HStack(spacing: 3) {
-                Image(systemName: "dollarsign.circle")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                Text(String(format: "$%.4f", snapshot.estimatedCost))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(costColor(snapshot.estimatedCost))
-            }
         }
     }
 
@@ -162,11 +152,6 @@ struct AIUsageView: View {
         return [Color(hex: "#30d158"), Color(hex: "#64d2ff")]
     }
 
-    private func costColor(_ cost: Double) -> Color {
-        if cost > 1.0 { return Color(hex: "#ff453a") }
-        if cost > 0.25 { return Color(hex: "#ffd60a") }
-        return Color(hex: "#30d158")
-    }
 
     private func windowTimeRemaining(snapshot: UsageSnapshot) -> String {
         let remaining = snapshot.windowEnd.timeIntervalSince(Date())

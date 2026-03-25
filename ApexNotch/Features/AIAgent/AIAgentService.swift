@@ -106,7 +106,7 @@ actor AIAgentService {
         let state: AgentState
         if stalled {
             state = .stalled
-        } else if timeSinceLast < 30 {
+        } else if timeSinceLast < 90 {
             state = .active
         } else {
             state = .idle

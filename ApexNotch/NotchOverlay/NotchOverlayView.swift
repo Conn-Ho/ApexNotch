@@ -1,364 +1,346 @@
 import SwiftUI
+import AppKit
 
 // MARK: - NotchOverlayView
-// Full-screen-width overlay that sits above the menu bar.
-// Closed state: 38pt tall with two wings flanking the camera notch.
-// Expanded state: ~200pt, reveals a frosted glass panel below.
 
 struct NotchOverlayView: View {
     let appState: AppState
 
     @State private var isExpanded = false
-    @State private var isHovered  = false
+    @State private var isHovering = false
+    @State private var hoverTask: Task<Void, Never>?
 
-    // Wing fixed widths
-    private let wingWidth:  CGFloat = 160
-    // Height constants
-    private let barHeight:  CGFloat = 38
-    private let panelHeight: CGFloat = 180
+    private let spring = Animation.interactiveSpring(response: 0.38, dampingFraction: 1.0)
+
+    // ── Corner radii (AgentNotch values) ──────────────────────────────
+    private var topR:    CGFloat { isExpanded ? 19  : 6  }
+    private var bottomR: CGFloat { isExpanded ? 24  : 14 }
+
+    // ── Size constants ─────────────────────────────────────────────────
+    private let wingW:       CGFloat = 100   // each wing (closed state)
+    private let openW:       CGFloat = 520   // expanded panel width
 
     var body: some View {
-        VStack(spacing: 0) {
-            // ── Top bar: wings + transparent camera gap ──────────────────
-            HStack(spacing: 0) {
-                leftWing
-                Spacer()     // transparent camera bump
-                rightWing
-            }
-            .frame(height: barHeight)
+        let notch   = closedNotchSize()
+        let closedW = notch.width + wingW * 2
+        let totalW  = isExpanded ? openW : closedW
+        let headerH = notch.height
 
-            // ── Expansion panel ──────────────────────────────────────────
-            if isExpanded {
-                expansionPanel
-                    .transition(.move(edge: .top).combined(with: .opacity))
+        // ZStack guarantees the panel is centered horizontally in the full-screen window
+        ZStack(alignment: .top) {
+            Color.clear  // expands to fill full-screen NSHostingView
+
+            // Permanent notch cover — always the full closed-state shape, independent of
+            // panel animation. Prevents the hardware notch border from showing during
+            // spring overshoot when the animated panel briefly undershoots closedW.
+            Color.black
+                .frame(width: closedW, height: headerH)
+                .mask(NotchShape(topCornerRadius: 6, bottomCornerRadius: 14))
+
+            // Panel
+            VStack(alignment: .leading, spacing: 0) {
+                header(notchW: notch.width, headerH: headerH)
+                    .frame(height: headerH)
+
+                if isExpanded {
+                    expandedContent
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                }
             }
+            .frame(width: totalW)
+            .background(Color.black)
+            .mask(
+                NotchShape(topCornerRadius: topR, bottomCornerRadius: bottomR)
+                    .animation(spring, value: isExpanded)
+            )
+            .contentShape(
+                NotchShape(topCornerRadius: topR, bottomCornerRadius: bottomR)
+            )
+            .overlay {
+                let isIdle = { if case .idle = appState.currentSignal { return true }; return false }()
+                NotchEffectBorder(topR: topR, bottomR: bottomR,
+                                  color: appState.currentSignal.color,
+                                  settings: appState.effectSettings)
+                    .opacity(isIdle ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.6), value: isIdle)
+            }
+            .shadow(color: isExpanded ? .black.opacity(0.55) : .clear, radius: 14)
+            .onHover { handleHover($0) }
+            .animation(spring, value: isExpanded)
         }
-        .animation(
-            .interactiveSpring(response: 0.38, dampingFraction: 0.8),
-            value: isExpanded
-        )
-        .onHover { hovering in
-            isHovered = hovering
-            withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.8)) {
-                isExpanded = hovering
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - Header  [left wing][notch gap][right wing]
+
+    private func header(notchW: CGFloat, headerH: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            // Left wing — padding first, then frame (keeps padding INSIDE)
+            HStack(spacing: 6) {
+                pulseDot
+                toolPill
+                Spacer(minLength: 0)
             }
+            .padding(.leading, isExpanded ? topR + 4 : 10)
+            .padding(.trailing, 4)
+            .frame(width: isExpanded ? (openW / 2 - notchW / 2) : wingW)
+
+            // Camera notch gap — black fills over the hardware notch
+            Color.black.frame(width: notchW)
+
+            // Right wing
+            HStack(spacing: 5) {
+                Spacer(minLength: 0)
+                tokenLabel
+                stateIndicator
+            }
+            .padding(.trailing, isExpanded ? topR + 4 : 10)
+            .padding(.leading, 4)
+            .frame(width: isExpanded ? (openW / 2 - notchW / 2) : wingW)
         }
     }
 
-    // MARK: - Left Wing
-    // Shows: colored status dot + tool name pill
+    // MARK: - Expanded content
 
-    private var leftWing: some View {
-        HStack(spacing: 7) {
-            // Status pulse dot
-            pulseDot
-
-            // Tool name pill
-            if case .agentActive(let toolName) = appState.currentSignal {
-                toolPill(toolName)
-            } else {
-                toolPill(appState.currentSignal.displayText)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, 12)
-        .padding(.trailing, 6)
-        .frame(width: wingWidth, height: barHeight)
-        .background(wingBackground, in: NotchBgShape(cornerRadius: 12, bottomCornersOnly: true))
-        .overlay(
-            NotchBgShape(cornerRadius: 12, bottomCornersOnly: true)
-                .stroke(Color.white.opacity(0.09), lineWidth: 0.5)
-        )
-        .overlay(wingGlow, alignment: .bottom)
-    }
-
-    // MARK: - Right Wing
-    // Shows: token count (monospaced) + live timer or checkmark
-
-    private var rightWing: some View {
-        HStack(spacing: 7) {
-            Spacer(minLength: 0)
-
-            // Token count
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
             if let session = appState.agentSession {
-                Text(formatTokens(session.totalTokens))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color(hex: "#ff9f0a"))
-            } else if let snapshot = appState.usageSnapshot {
-                Text(formatTokens(snapshot.totalTokens))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color(hex: "#ffd60a"))
-            } else {
-                Text("—")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.quaternary)
+                section("Agent · \(session.source.rawValue)") { agentDetail(session) }
             }
-
-            // Timer or state indicator
-            rightWingIndicator
+            if let snap = appState.usageSnapshot {
+                section("Usage · 5h window") { usageDetail(snap) }
+            }
+            if let repo = appState.repoStatus {
+                section("Repo · \(repo.repoName)") { repoDetail(repo) }
+            }
+            if !appState.projects.isEmpty {
+                section("Processes · \(appState.projects.count)") { processDetail }
+            }
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 12)
-        .frame(width: wingWidth, height: barHeight)
-        .background(wingBackground, in: NotchBgShape(cornerRadius: 12, bottomCornersOnly: true))
-        .overlay(
-            NotchBgShape(cornerRadius: 12, bottomCornersOnly: true)
-                .stroke(Color.white.opacity(0.09), lineWidth: 0.5)
-        )
-        .overlay(wingGlow, alignment: .bottom)
+        .padding(.horizontal, 32)
+        .padding(.top, 12)
+        .padding(.bottom, bottomR + 12)
+    }
+
+    // MARK: - Left wing views
+
+    private var pulseDot: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
+            let t     = tl.date.timeIntervalSinceReferenceDate
+            let speed = appState.currentSignal.pulseSpeed
+            let pulse = speed > 0 ? (sin(t * .pi * 2 * speed) + 1) / 2 : 0.6
+            Circle()
+                .fill(appState.currentSignal.color)
+                .frame(width: 7, height: 7)
+                .shadow(color: appState.currentSignal.color.opacity(pulse), radius: 4)
+        }
+    }
+
+    private var toolPill: some View {
+        let label: String = {
+            if case .agentActive(let n) = appState.currentSignal { return n }
+            return appState.currentSignal.displayText
+        }()
+        return Text(label.isEmpty ? "idle" : label)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.white.opacity(0.10), in: Capsule())
+    }
+
+    // MARK: - Right wing views
+
+    private var tokenLabel: some View {
+        Group {
+            if let s = appState.agentSession {
+                Text(fmt(s.totalTokens)).foregroundStyle(Color(hex: "#ff9f0a"))
+            } else if let snap = appState.usageSnapshot {
+                Text(fmt(snap.totalTokens)).foregroundStyle(Color(hex: "#ffd60a"))
+            } else {
+                Text("—").foregroundStyle(.white.opacity(0.3))
+            }
+        }
+        .font(.system(size: 9, weight: .medium, design: .monospaced))
     }
 
     @ViewBuilder
-    private var rightWingIndicator: some View {
-        if let session = appState.agentSession {
-            switch session.state {
+    private var stateIndicator: some View {
+        if let s = appState.agentSession {
+            switch s.state {
             case .active:
-                // Running timer
                 TimelineView(.animation(minimumInterval: 1)) { _ in
-                    Text(formatDuration(session.sessionDuration))
-                        .font(.system(size: 10, design: .monospaced))
+                    Text(fmtDur(s.sessionDuration))
+                        .font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(Color(hex: "#ff9f0a").opacity(0.8))
                 }
             case .stalled:
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color(hex: "#ff453a"))
+                    .font(.system(size: 9)).foregroundStyle(Color(hex: "#ff453a"))
             case .idle:
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color(hex: "#30d158"))
+                    .font(.system(size: 9)).foregroundStyle(Color(hex: "#30d158"))
             }
         } else {
             Image(systemName: "circle.dotted")
-                .font(.system(size: 10))
-                .foregroundStyle(.quaternary)
+                .font(.system(size: 9)).foregroundStyle(.white.opacity(0.25))
         }
     }
 
-    // MARK: - Expansion Panel
+    // MARK: - Section card
 
-    private var expansionPanel: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // AI Agent section
-                if let session = appState.agentSession {
-                    panelSectionHeader("Agent · \(session.source.rawValue)")
-                    agentSummary(session: session)
-                    Divider().opacity(0.1).padding(.horizontal, 12)
-                }
-
-                // Usage section
-                if let snapshot = appState.usageSnapshot {
-                    panelSectionHeader("Usage · 5h window")
-                    usageSummary(snapshot: snapshot)
-                    Divider().opacity(0.1).padding(.horizontal, 12)
-                }
-
-                // Processes section
-                if !appState.projects.isEmpty {
-                    panelSectionHeader("Processes · \(appState.projects.count)")
-                    processSummary
-                }
-            }
-            .padding(.bottom, 6)
+    private func section<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+                .textCase(.uppercase)
+                .tracking(0.5)
+            content()
         }
-        .frame(height: panelHeight)
-        .background(
-            .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 12)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-        )
-        .padding(.horizontal, 4)
-        .shadow(color: Color.black.opacity(0.5), radius: 16, y: 8)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08)))
     }
 
-    // MARK: - Panel Sections
-
-    private func panelSectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .textCase(.uppercase)
-            .tracking(0.6)
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 3)
-    }
-
-    private func agentSummary(session: AgentSession) -> some View {
+    private func agentDetail(_ s: AgentSession) -> some View {
         VStack(spacing: 3) {
-            ForEach(session.recentTools.prefix(3)) { tool in
+            ForEach(s.recentTools.prefix(3)) { tool in
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(toolStatusColor(tool.status))
-                        .frame(width: 5, height: 5)
+                    Circle().fill(toolColor(tool.status)).frame(width: 4, height: 4)
                     Text(tool.toolName)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
                     Spacer()
-                    if let dur = tool.duration {
-                        Text(String(format: "%.1fs", dur))
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.quaternary)
+                    if let d = tool.duration {
+                        Text(String(format: "%.1fs", d))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.35))
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 2)
             }
-            HStack(spacing: 8) {
-                Text(formatDuration(session.sessionDuration))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                Text("·")
-                    .foregroundStyle(.quaternary)
-                Text(formatTokens(session.totalTokens))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+                Text(fmtDur(s.sessionDuration))
+                Text("·").foregroundStyle(.white.opacity(0.3))
+                Text(fmt(s.totalTokens))
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 4)
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.45))
+            .padding(.top, 2)
         }
-        .padding(.bottom, 6)
     }
 
-    private func usageSummary(snapshot: UsageSnapshot) -> some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text(formatTokens(snapshot.totalTokens) + " tokens")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(String(format: "$%.4f", snapshot.estimatedCost))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color(hex: "#30d158"))
-            }
-            .padding(.horizontal, 14)
-
-            GeometryReader { geo in
+    private func usageDetail(_ snap: UsageSnapshot) -> some View {
+        VStack(spacing: 6) {
+            Text(fmt(snap.totalTokens) + " tokens")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.85))
+            GeometryReader { g in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 4)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(usageGaugeColor(snapshot.windowProgress))
-                        .frame(width: geo.size.width * CGFloat(snapshot.windowProgress), height: 4)
+                    Capsule().fill(Color.white.opacity(0.08)).frame(height: 3)
+                    Capsule().fill(gaugeColor(snap.windowProgress))
+                        .frame(width: g.size.width * snap.windowProgress, height: 3)
                 }
             }
-            .frame(height: 4)
-            .padding(.horizontal, 14)
+            .frame(height: 3)
         }
-        .padding(.bottom, 8)
     }
 
-    private var processSummary: some View {
-        VStack(spacing: 0) {
-            ForEach(appState.projects.prefix(3)) { group in
+    private func repoDetail(_ repo: RepoStatus) -> some View {
+        VStack(spacing: 4) {
+            // Branch + sync state
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.5))
+                Text(repo.branch)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: repo.syncState.icon)
+                    .font(.system(size: 9))
+                    .foregroundStyle(repo.syncState.color)
+                Text(repo.syncState.label)
+                    .font(.system(size: 9))
+                    .foregroundStyle(repo.syncState.color.opacity(0.85))
+            }
+            // Ahead / behind / dirty detail
+            if !repo.syncDetail.isEmpty {
+                HStack {
+                    Text(repo.syncDetail)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var processDetail: some View {
+        VStack(spacing: 2) {
+            ForEach(appState.projects.prefix(4)) { g in
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(group.isZombie ? Color(hex: "#ff453a") : Color(hex: "#30d158"))
-                        .frame(width: 5, height: 5)
-                    Text(group.name)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.primary)
+                        .fill(g.isZombie ? Color(hex: "#ff453a") : Color(hex: "#30d158"))
+                        .frame(width: 4, height: 4)
+                    Text(g.name).font(.system(size: 10)).foregroundStyle(.white.opacity(0.85))
                     Spacer()
-                    Text("\(group.processes.count) proc · \(group.totalMemoryMB)MB")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.quaternary)
+                    Text("\(g.processes.count)p · \(g.totalMemoryMB)MB")
+                        .font(.system(size: 9)).foregroundStyle(.white.opacity(0.35))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 3)
+                .padding(.vertical, 2)
             }
         }
-        .padding(.bottom, 6)
     }
 
-    // MARK: - Shared Components
+    // MARK: - Hover
 
-    private var pulseDot: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-            let t = tl.date.timeIntervalSinceReferenceDate
-            let speed = appState.currentSignal.pulseSpeed
-            let pulse: Double = speed > 0
-                ? (sin(t * .pi * 2 * speed) + 1) / 2
-                : 0.6
-            Circle()
-                .fill(appState.currentSignal.color)
-                .frame(width: 8, height: 8)
-                .shadow(
-                    color: appState.currentSignal.color.opacity(0.9 * pulse),
-                    radius: 5
-                )
-        }
-    }
-
-    private func toolPill(_ text: String) -> some View {
-        Text(text.isEmpty ? "idle" : text)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Color.white.opacity(0.08), in: ToolPillShape())
-            .overlay(ToolPillShape().stroke(Color.white.opacity(0.1), lineWidth: 0.5))
-    }
-
-    private var wingBackground: some ShapeStyle {
-        AnyShapeStyle(Color(red: 0.1, green: 0.1, blue: 0.1, opacity: 0.85))
-    }
-
-    /// Subtle glow line at the bottom edge of each wing when active
-    @ViewBuilder
-    private var wingGlow: some View {
-        if case .idle = appState.currentSignal {
-            EmptyView()
+    private func handleHover(_ hovering: Bool) {
+        hoverTask?.cancel()
+        if hovering {
+            isHovering = true
+            hoverTask = Task {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard isHovering else { return }
+                    withAnimation(spring) { isExpanded = true }
+                }
+            }
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                let speed = appState.currentSignal.pulseSpeed
-                let pulse: Double = speed > 0
-                    ? (sin(t * .pi * 2 * speed) + 1) / 2
-                    : 0.5
-                Capsule()
-                    .fill(appState.currentSignal.color.opacity(0.6 * pulse))
-                    .frame(height: 2)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 1)
+            hoverTask = Task {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isHovering = false
+                    withAnimation(spring) { isExpanded = false }
+                }
             }
         }
     }
 
     // MARK: - Helpers
 
-    private func formatTokens(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            return String(format: "%.1fM", Double(count) / 1_000_000.0)
-        } else if count >= 1_000 {
-            return String(format: "%.1fk", Double(count) / 1_000.0)
-        }
-        return "\(count)"
+    private func fmt(_ n: Int) -> String {
+        n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000)
+            : n >= 1_000 ? String(format: "%.1fk", Double(n) / 1_000)
+            : "\(n)"
     }
-
-    private func formatDuration(_ interval: TimeInterval) -> String {
-        let minutes = Int(interval) / 60
-        let seconds = Int(interval) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+    private func fmtDur(_ t: TimeInterval) -> String {
+        String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
-
-    private func toolStatusColor(_ status: ToolCallStatus) -> Color {
-        switch status {
-        case .running:   return Color(hex: "#ff9f0a")
-        case .completed: return Color(hex: "#30d158")
-        case .failed:    return Color(hex: "#ff453a")
+    private func toolColor(_ s: ToolCallStatus) -> Color {
+        switch s {
+        case .running:   Color(hex: "#ff9f0a")
+        case .completed: Color(hex: "#30d158")
+        case .failed:    Color(hex: "#ff453a")
         }
     }
-
-    private func usageGaugeColor(_ progress: Double) -> Color {
-        if progress > 0.85 { return Color(hex: "#ff453a") }
-        if progress > 0.65 { return Color(hex: "#ffd60a") }
-        return Color(hex: "#30d158")
+    private func gaugeColor(_ p: Double) -> Color {
+        p > 0.85 ? Color(hex: "#ff453a") : p > 0.65 ? Color(hex: "#ffd60a") : Color(hex: "#30d158")
     }
 }
+

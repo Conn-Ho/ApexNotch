@@ -1,56 +1,72 @@
 import SwiftUI
 
-// MARK: - NotchBgShape
-// Rounded rectangle with per-corner radius control.
-// Used as the background for each notch wing (left and right).
-// Bottom corners are fully rounded; top corners flush against the menu bar.
+// MARK: - NotchShape
+// Single unified shape covering the notch + wings.
+// topCornerRadius  — inward curves at top (matches physical notch corners: ~6pt)
+// bottomCornerRadius — outward curves at bottom of the panel
+// Based on DynamicNotchKit / AgentNotch approach.
 
-struct NotchBgShape: Shape {
-    var cornerRadius: CGFloat = 12
-    /// When true, rounds only the bottom corners (flush to menu bar on top).
-    var bottomCornersOnly: Bool = true
+struct NotchShape: Shape {
+    var topCornerRadius:    CGFloat
+    var bottomCornerRadius: CGFloat
+
+    init(topCornerRadius: CGFloat = 6, bottomCornerRadius: CGFloat = 14) {
+        self.topCornerRadius    = topCornerRadius
+        self.bottomCornerRadius = bottomCornerRadius
+    }
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { .init(topCornerRadius, bottomCornerRadius) }
+        set { topCornerRadius = newValue.first; bottomCornerRadius = newValue.second }
+    }
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let r = min(cornerRadius, rect.height / 2)
+        var p = Path()
+        let tr = topCornerRadius
+        let br = bottomCornerRadius
 
-        if bottomCornersOnly {
-            // Top-left → top-right: straight
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            // Top-right corner: sharp
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
-            // Bottom-right corner: rounded
-            path.addArc(
-                center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
-                radius: r,
-                startAngle: .degrees(0),
-                endAngle: .degrees(90),
-                clockwise: false
-            )
-            // Bottom edge
-            path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
-            // Bottom-left corner: rounded
-            path.addArc(
-                center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
-                radius: r,
-                startAngle: .degrees(90),
-                endAngle: .degrees(180),
-                clockwise: false
-            )
-            // Left edge back to top-left
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.closeSubpath()
-        } else {
-            path.addRoundedRect(in: rect, cornerSize: CGSize(width: r, height: r))
-        }
+        // Top-left: inward quadratic curve
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addQuadCurve(
+            to:      CGPoint(x: rect.minX + tr, y: rect.minY + tr),
+            control: CGPoint(x: rect.minX + tr, y: rect.minY)
+        )
 
-        return path
+        // Left edge down to bottom-left curve
+        p.addLine(to: CGPoint(x: rect.minX + tr, y: rect.maxY - br))
+
+        // Bottom-left: outward quadratic curve
+        p.addQuadCurve(
+            to:      CGPoint(x: rect.minX + tr + br, y: rect.maxY),
+            control: CGPoint(x: rect.minX + tr,      y: rect.maxY)
+        )
+
+        // Bottom edge
+        p.addLine(to: CGPoint(x: rect.maxX - tr - br, y: rect.maxY))
+
+        // Bottom-right: outward quadratic curve
+        p.addQuadCurve(
+            to:      CGPoint(x: rect.maxX - tr,       y: rect.maxY - br),
+            control: CGPoint(x: rect.maxX - tr,       y: rect.maxY)
+        )
+
+        // Right edge up to top-right curve
+        p.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY + tr))
+
+        // Top-right: inward quadratic curve
+        p.addQuadCurve(
+            to:      CGPoint(x: rect.maxX, y: rect.minY),
+            control: CGPoint(x: rect.maxX - tr, y: rect.minY)
+        )
+
+        // Top edge back
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+
+        return p
     }
 }
 
-// MARK: - ToolPillShape
-// A simple pill / capsule shape used for the tool name display inside a notch wing.
+// MARK: - ToolPillShape (capsule for tool name pill)
 
 struct ToolPillShape: Shape {
     func path(in rect: CGRect) -> Path {
